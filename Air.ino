@@ -2,6 +2,8 @@
 #include <DallasTemperature.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include <WiFi.h>
+#include <AntaresESPHTTP.h>
 
 // Konfigurasi untuk DS18B20
 #define ONE_WIRE_BUS 26 // Pin SDA atau pin data DS18B20 pada Wemos D1 R32
@@ -13,6 +15,15 @@ const int pHSense = 34;   // Pin ADC1_6 untuk sensor pH pada Wemos D1 R32
 const int tdsSense = 35;  // Pin ADC1_7 untuk sensor TDS pada Wemos D1 R32
 int samples = 10;         // Jumlah sampel untuk pembacaan TDS
 const float tdsConversionFactor = 0.5; // Faktor konversi TDS
+
+// Konfigurasi Antares dan Wi-Fi
+#define ACCESSKEY "dfc006da1c3a0035:976d081f50d1fc94"  // Kunci akses ke akun Antares
+#define WIFISSID "dani"                         // Nama SSID Wi-Fi
+#define PASSWORD "alyubi123"                        // Kata sandi Wi-Fi
+#define projectName "UnisaHidro"                    // Nama proyek di Antares
+#define deviceName "sabtu"                    // Nama perangkat yang terhubung di platform Antares
+
+AntaresESPHTTP antares(ACCESSKEY);               // Instalasi Objek Antares dengan kunci akses
 
 // Inisialisasi LCD I2C (alamat LCD biasanya 0x27 atau 0x3F)
 LiquidCrystal_I2C lcd(0x3F, 20, 4);  // 20x4 LCD
@@ -34,8 +45,22 @@ void setup() {
     lcd.setCursor(0, 0);
     lcd.print("Initializing...");
     delay(2000);
+
+    // Koneksi Wi-Fi
+    WiFi.begin(WIFISSID, PASSWORD);  // Menghubungkan ke jaringan Wi-Fi
+    Serial.print("Menghubungkan ke Wi-Fi...");
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("Terhubung ke Wi-Fi");
+
+    // Inisialisasi koneksi ke Antares
+    antares.setDebug(true);  // Mengaktifkan mode debugging untuk melihat informasi tambahan pada serial monitor
+    antares.wifiConnection(WIFISSID, PASSWORD);  // Menghubungkan ke Antares melalui Wi-Fi
 }
 
+// Fungsi untuk menghitung pH dari tegangan
 float calculatePH(float voltage) {
     const float pHNeutral = 7.0;
     const float voltageNeutral = 1.65;  // Tegangan netral untuk pH sensor
@@ -43,6 +68,7 @@ float calculatePH(float voltage) {
     return ((voltage - voltageNeutral) / voltagePerPHUnit + pHNeutral) / 2;
 }
 
+// Fungsi untuk membaca nilai TDS
 int readTDS() {
     long tdsSum = 0;
     for (int i = 0; i < samples; i++) {
@@ -51,6 +77,14 @@ int readTDS() {
     }
     int rawTDSValue = tdsSum / samples;  // Menghitung rata-rata nilai TDS
     return rawTDSValue * tdsConversionFactor;  // Menghitung nilai TDS berdasarkan faktor konversi
+}
+
+// Fungsi untuk mengirim data ke Antares
+void sendToAntares(float pHValue, int tdsValue, float temperatureC) {
+    antares.add("ph", String(pHValue, 2));  // Menambahkan data pH
+    antares.add("tds", tdsValue); // Menambahkan data TDS
+    antares.add("temp", temperatureC); // Menambahkan data suhu
+    antares.sendNonSecure(projectName, deviceName);  // Mengirim data tanpa enkripsi (non-secure)
 }
 
 void loop() {
@@ -97,7 +131,10 @@ void loop() {
     lcd.print(" ppm");
 
     lcd.setCursor(0, 3);
-    lcd.print("ANJAYY");
+    lcd.print("SEMOGA LAB BARU");
+
+    // Kirim data ke Antares
+    sendToAntares(pHValue, tdsValue, temperatureC);
 
     delay(6000); // Tunggu 6 detik sebelum pembacaan berikutnya
 }
